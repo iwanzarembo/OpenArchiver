@@ -60,7 +60,13 @@
 		"journalingSourceManagedByJournaling": "SMTP-Journaling-Quellen werden über die Journaling-Seite verwaltet und können nicht über die API für Erfassungsquellen geändert werden.",
 		"oauthNotOAuthSource": "Diese Erfassungsquelle verwendet keine OAuth-Autorisierung.",
 		"oauthAuthorizeFailed": "Die Autorisierung des Postfachs konnte nicht gestartet werden.",
-		"oauthPollFailed": "Der Autorisierungsstatus konnte nicht abgefragt werden."
+		"oauthPollFailed": "Der Autorisierungsstatus konnte nicht abgefragt werden.",
+		"foldersMissingConfig": "Gib sourceId oder providerConfig an, um die Ordnerliste zu laden.",
+		"foldersNotSupported": "Die Ordnerauswahl ist nur für IMAP-Postfächer verfügbar (Generic IMAP oder ein OAuth-Postfach über IMAP).",
+		"foldersNeedAuthorization": "Postfach zuerst autorisieren. Die Ordnerliste benötigt ein gültiges Token.",
+		"foldersAuthFailed": "Anmeldung am IMAP-Server fehlgeschlagen. Benutzername und Passwort prüfen.",
+		"foldersTimeout": "Der IMAP-Server hat nicht rechtzeitig geantwortet.",
+		"foldersConnectionFailed": "Verbindung zum IMAP-Server fehlgeschlagen."
 	},
 	"archivedEmail": {
 		"notFound": "Archivierte E-Mail nicht gefunden"

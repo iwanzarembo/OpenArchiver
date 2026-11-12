@@ -7,6 +7,7 @@ import type {
 } from '@open-archiver/types';
 import type { IEmailConnector, ConnectorOptions } from '../EmailProviderFactory';
 import { normalizeEmailAddress } from '../../helpers/emailAddress';
+import { matchesFolderFilter } from '../../helpers/folderFilter';
 import { ImapFlow } from 'imapflow';
 import { simpleParser, ParsedMail, Attachment, AddressObject, Headers } from 'mailparser';
 import { config } from '../../config';
@@ -25,6 +26,15 @@ import { writeEmailToTempFile } from './helpers/tempFile';
  */
 const isDraftsMailbox = (mailbox: { specialUse?: string; flags: Set<string> }): boolean =>
 	mailbox.specialUse?.toLowerCase() === '\\drafts' || mailbox.flags.has('\\Drafts');
+
+/** Whether a mailbox is a Junk/Spam or Trash folder, by SPECIAL-USE or by flag. */
+const isJunkOrTrashMailbox = (mailbox: { specialUse?: string; flags: Set<string> }): boolean => {
+	const specialUse = mailbox.specialUse?.toLowerCase();
+	if (specialUse === '\\junk' || specialUse === '\\trash') {
+		return true;
+	}
+	return mailbox.flags.has('\\Trash') || mailbox.flags.has('\\Junk');
+};
 
 /**
  * Supplies a currently-valid OAuth access token for one XOAUTH2 connection attempt.
@@ -277,35 +287,18 @@ export class ImapConnector implements IEmailConnector {
 			const mailboxes = await this.withRetry(async () => await this.imap.list());
 
 			const processableMailboxes = mailboxes.filter((mailbox) => {
-				// Exclude mailboxes that cannot be selected.
+				// Exclude mailboxes that cannot be selected. This is a protocol constraint, not
+				// a policy one, so it also holds for an explicit `include` entry.
 				if (mailbox.flags.has('\\Noselect')) {
 					return false;
 				}
-				// Drafts, before the all-inclusive short-circuit below: that setting is about Junk
-				// and Trash, and someone who wants their spam archived has not thereby asked for
-				// every half-written message too. Excluding the folder rather than filtering later
-				// means a draft is never downloaded at all. imapflow fills in specialUse from a
-				// folder-name table as well as RFC 6154, so this holds on servers with no
-				// SPECIAL-USE extension.
-				if (!config.ingestion.archiveDrafts && isDraftsMailbox(mailbox)) {
-					return false;
-				}
-				if (config.app.allInclusiveArchive) {
-					return true;
-				}
-				// filter out junk/spam mail emails
-				if (mailbox.specialUse) {
-					const specialUse = mailbox.specialUse.toLowerCase();
-					if (specialUse === '\\junk' || specialUse === '\\trash') {
-						return false;
-					}
-				}
-				// Fallback to checking flags
-				if (mailbox.flags.has('\\Trash') || mailbox.flags.has('\\Junk')) {
-					return false;
-				}
 
-				return true;
+				return matchesFolderFilter(mailbox.path, this.options.folderFilters, {
+					isDrafts: isDraftsMailbox(mailbox),
+					isJunkOrTrash: isJunkOrTrashMailbox(mailbox),
+					archiveDrafts: config.ingestion.archiveDrafts,
+					allInclusive: config.app.allInclusiveArchive,
+				});
 			});
 
 			for (const mailboxInfo of processableMailboxes) {

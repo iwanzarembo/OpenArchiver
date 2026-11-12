@@ -6,12 +6,35 @@ import {
 	UpdateIngestionSourceDto,
 	IngestionSource,
 	SafeIngestionSource,
+	GenericImapCredentials,
+	OAuthMailboxCredentials,
 } from '@open-archiver/types';
 import { logger } from '../../config/logger';
 import { UserService } from '../../services/UserService';
 import { AuditService } from '../../services/AuditService';
 import { checkDeletionEnabled } from '../../helpers/deletionGuard';
+import { mergeProviderCredentials } from '../../services/credentialMerge';
+import {
+	FolderListError,
+	FolderListService,
+	ImapFolderListConnection,
+} from '../../services/FolderListService';
+import {
+	OAuthReauthorizationRequiredError,
+	OAuthTokenService,
+} from '../../services/oauth/OAuthTokenService';
 import type { ReindexMode } from '@open-archiver/types';
+
+/** A request-level problem with a translated body, raised before any IMAP connection. */
+class FolderListRequestError extends Error {
+	constructor(
+		public readonly translationKey: string,
+		public readonly httpStatus = 400
+	) {
+		super(translationKey);
+		this.name = 'FolderListRequestError';
+	}
+}
 
 export class IngestionController {
 	/**
@@ -66,6 +89,176 @@ export class IngestionController {
 			});
 		}
 	};
+
+	/**
+	 * Lists the folders of a mailbox for the folder picker.
+	 *
+	 * Two modes:
+	 * - `sourceId` (edit dialog): stored credentials are used, so the admin does not have to
+	 *   retype a password the UI cannot show. A `providerConfig` from the form is merged on top
+	 *   so a connection field that was changed but not yet saved is honoured.
+	 * - `providerConfig` alone (create dialog): the credentials from the form are used.
+	 *
+	 * Only IMAP transports have folders to choose from. The Graph transport of an OAuth mailbox
+	 * is deliberately refused instead of returning a list that the sync would ignore.
+	 */
+	public listFolders = async (req: Request, res: Response): Promise<Response> => {
+		const body = (req.body ?? {}) as Record<string, unknown>;
+		const sourceId =
+			typeof body.sourceId === 'string' && body.sourceId !== '' ? body.sourceId : undefined;
+		const providerConfig =
+			body.providerConfig &&
+			typeof body.providerConfig === 'object' &&
+			!Array.isArray(body.providerConfig)
+				? (body.providerConfig as Record<string, any>)
+				: undefined;
+
+		if (!sourceId && !providerConfig) {
+			return res.status(400).json({ message: req.t('ingestion.foldersMissingConfig') });
+		}
+
+		try {
+			const connection = sourceId
+				? await this.folderConnectionForSource(sourceId, providerConfig)
+				: this.folderConnectionForForm(providerConfig!, body.provider);
+
+			if (!connection) {
+				return res.status(400).json({ message: req.t('ingestion.foldersNotSupported') });
+			}
+
+			const folders = await FolderListService.listFolders(connection);
+			return res.status(200).json({ folders });
+		} catch (error) {
+			if (error instanceof FolderListRequestError) {
+				return res.status(error.httpStatus).json({ message: req.t(error.translationKey) });
+			}
+			if (error instanceof OAuthReauthorizationRequiredError) {
+				return res.status(401).json({ message: error.message });
+			}
+			if (error instanceof FolderListError) {
+				const key =
+					error.code === 'imap_auth_failed'
+						? 'ingestion.foldersAuthFailed'
+						: error.code === 'imap_timeout'
+							? 'ingestion.foldersTimeout'
+							: 'ingestion.foldersConnectionFailed';
+				logger.warn(
+					{ sourceId, code: error.code, message: error.message },
+					'Folder listing failed'
+				);
+				return res.status(error.httpStatus).json({ message: req.t(key) });
+			}
+			if (error instanceof Error && error.message === 'Ingestion source not found') {
+				return res.status(404).json({ message: req.t('ingestion.notFound') });
+			}
+			if (error instanceof Error && error.message.startsWith('Missing required')) {
+				return res.status(400).json({ message: error.message });
+			}
+			if (error instanceof Error && error.message.startsWith('Changing the provider')) {
+				return res.status(400).json({ message: error.message });
+			}
+			logger.warn(
+				{ sourceId, message: error instanceof Error ? error.message : String(error) },
+				'Folder listing error'
+			);
+			return res.status(400).json({ message: req.t('ingestion.foldersConnectionFailed') });
+		}
+	};
+
+	/** Builds the IMAP connection for an existing source, merging unsaved form values. */
+	private async folderConnectionForSource(
+		sourceId: string,
+		providerConfig?: Record<string, any>
+	): Promise<ImapFolderListConnection | null> {
+		const source = await IngestionService.findById(sourceId);
+
+		if (source.provider === 'oauth_mailbox') {
+			const oauth = source.credentials as OAuthMailboxCredentials;
+			// Graph folders are an id space of their own; pretending IMAP names apply would
+			// create a filter the sync never evaluates.
+			if ((oauth.transport ?? 'imap') === 'graph') {
+				return null;
+			}
+			// Unsaved form edits are ignored here: changing an OAuth mailbox's connection
+			// invalidates its token, so the source has to be saved and re-authorized first.
+			return {
+				host: oauth.imapHost,
+				port: oauth.imapPort ?? 993,
+				secure: true,
+				username: oauth.authorizedEmail || oauth.email,
+				accessTokenSupplier: () => OAuthTokenService.getValidAccessToken(source.id),
+			};
+		}
+
+		if (source.provider !== 'generic_imap') {
+			return null;
+		}
+
+		let credentials = source.credentials as GenericImapCredentials;
+		if (providerConfig) {
+			const merged = mergeProviderCredentials(credentials, providerConfig);
+			if (!merged.ok) {
+				throw new Error(merged.message);
+			}
+			credentials = merged.merged as GenericImapCredentials;
+		}
+
+		return this.folderConnectionFromCredentials(credentials);
+	}
+
+	private folderConnectionFromCredentials(
+		credentials: GenericImapCredentials
+	): ImapFolderListConnection {
+		if (!credentials.host || !credentials.username || !credentials.password) {
+			throw new FolderListRequestError('ingestion.foldersMissingConfig');
+		}
+		return {
+			host: credentials.host,
+			port: Number(credentials.port) || 993,
+			secure: credentials.secure !== false,
+			allowInsecureCert: credentials.allowInsecureCert === true,
+			username: credentials.username,
+			password: credentials.password,
+		};
+	}
+
+	/** Builds the IMAP connection for a not-yet-saved form. */
+	private folderConnectionForForm(
+		providerConfig: Record<string, any>,
+		provider?: unknown
+	): ImapFolderListConnection {
+		const type = providerConfig.type ?? provider;
+
+		if (type === 'oauth_mailbox') {
+			// The edit dialog after saving uses sourceId; a fresh OAuth form has no token yet.
+			throw new FolderListRequestError('ingestion.foldersNeedAuthorization');
+		}
+		if (type !== 'generic_imap') {
+			throw new FolderListRequestError('ingestion.foldersNotSupported');
+		}
+
+		const host = providerConfig.host;
+		const username = providerConfig.username;
+		const password = providerConfig.password;
+		if (
+			typeof host !== 'string' ||
+			!host ||
+			typeof username !== 'string' ||
+			!username ||
+			!password
+		) {
+			throw new FolderListRequestError('ingestion.foldersMissingConfig');
+		}
+
+		return {
+			host,
+			port: Number(providerConfig.port) || 993,
+			secure: providerConfig.secure !== false,
+			allowInsecureCert: providerConfig.allowInsecureCert === true,
+			username,
+			password,
+		};
+	}
 
 	public findAll = async (req: Request, res: Response): Promise<Response> => {
 		try {

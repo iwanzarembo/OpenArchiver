@@ -1,0 +1,1 @@
+ALTER TABLE "ingestion_sources" ADD COLUMN "folder_filters" jsonb;

@@ -2552,6 +2552,117 @@
         }
       }
     },
+    "/v1/ingestion-sources/folders": {
+      "post": {
+        "summary": "List the folders of a mailbox",
+        "description": "Connects to the IMAP server and returns its folders for the folder picker. With `sourceId` the stored credentials are reused, so an edit dialog does not need the password again; a `providerConfig` is merged on top for connection fields that were changed but not saved. Without `sourceId`, the `providerConfig` from a create dialog is used. Only generic IMAP sources and OAuth mailboxes over IMAP are supported. Requires `read:ingestion` for an existing source and `create:ingestion` for an unsaved one. Credentials are never logged.\n",
+        "operationId": "listIngestionSourceFolders",
+        "tags": [
+          "Ingestion"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Existing source whose stored credentials should be used."
+                  },
+                  "providerConfig": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Connection settings from the form (`type` identifies the provider)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folders of the mailbox, sorted by path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "folders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "example": "0 Haus.Rechnungen"
+                          },
+                          "delimiter": {
+                            "type": "string",
+                            "example": "."
+                          },
+                          "specialUse": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "\\Drafts"
+                          },
+                          "flags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exists": {
+                            "type": "integer",
+                            "description": "Number of messages in the folder."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing configuration, unsupported provider or a connection that failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The source does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ingestion-sources/reindex-all": {
       "post": {
         "summary": "Reindex the entire archive",

@@ -8,6 +8,7 @@ import type {
 	MboxImportCredentials,
 	OAuthMailboxCredentials,
 	JmapCredentials,
+	FolderFilter,
 	EmailObject,
 	SyncState,
 	MailboxUser,
@@ -32,6 +33,8 @@ export interface ConnectorOptions {
 	/** When true, connectors omit attachment binary content from the
 	 *  yielded EmailObject to avoid unnecessary memory allocation. */
 	preserveOriginalFile: boolean;
+	/** Per-source folder selection. Absent/null keeps the historic behaviour. */
+	folderFilters?: FolderFilter | null;
 }
 
 // Define a common interface for all connectors
@@ -72,6 +75,7 @@ export class EmailProviderFactory {
 		const credentials = source.credentials;
 		const options: ConnectorOptions = {
 			preserveOriginalFile: source.preserveOriginalFile ?? false,
+			folderFilters: source.folderFilters ?? null,
 		};
 
 		switch (source.provider) {

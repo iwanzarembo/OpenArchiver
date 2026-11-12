@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { relations } from 'drizzle-orm';
+import type { FolderFilter } from '@open-archiver/types';
 
 export const ingestionProviderEnum = pgEnum('ingestion_provider', [
 	'google_workspace',
@@ -50,6 +51,8 @@ export const ingestionSources = pgTable(
 		lastSyncStatusMessage: text('last_sync_status_message'),
 		syncState: jsonb('sync_state'),
 		preserveOriginalFile: boolean('preserve_original_file').notNull().default(false),
+		/** Which folders to archive for this source. Null keeps the historic behaviour. */
+		folderFilters: jsonb('folder_filters').$type<FolderFilter | null>(),
 		/** Self-referencing FK for merge groups. When set, this source is a child
 		 *  whose emails are logically grouped with the root source. Flat hierarchy only. */
 		mergedIntoId: uuid('merged_into_id').references((): AnyPgColumn => ingestionSources.id, {
