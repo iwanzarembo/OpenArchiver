@@ -1,0 +1,95 @@
+name: Publish image
+
+on:
+    push:
+        tags: ['v*']
+    workflow_dispatch:
+
+concurrency:
+    group: publish-image-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    REGISTRY: ghcr.io
+    GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/open-archiver
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+        permissions:
+            contents: read
+            packages: write
+        env:
+            DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up QEMU
+              uses: docker/setup-qemu-action@v3
+
+            - name: Set up Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Image metadata
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.GHCR_IMAGE }}
+                  # Immutable release tag on a v* tag, plus the moving "slim" tag.
+                  tags: |
+                      type=ref,event=tag
+                      type=sha,format=short
+                      type=raw,value=slim
+                  labels: |
+                      org.opencontainers.image.title=OpenArchiver Slim
+                      org.opencontainers.image.description=Unofficial OpenArchiver fork: folder filters, folder search, bulk deletion, viewer hardening
+                      org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.licenses=AGPL-3.0
+
+            - name: Build and push
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: apps/open-archiver/Dockerfile
+                  target: production
+                  platforms: linux/amd64,linux/arm64
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+                  provenance: true
+                  sbom: true
+
+            # Optional Docker Hub mirror. Set the repository variable
+            # DOCKERHUB_REPOSITORY (e.g. "speicherguru/open-archiver") and the secrets
+            # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN to enable it. The manifests are
+            # copied from GHCR, so the image is not rebuilt.
+            - name: Log in to Docker Hub
+              if: ${{ env.DOCKERHUB_TOKEN != '' && vars.DOCKERHUB_REPOSITORY != '' }}
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Mirror to Docker Hub
+              if: ${{ env.DOCKERHUB_TOKEN != '' && vars.DOCKERHUB_REPOSITORY != '' }}
+              env:
+                  DOCKERHUB_REPOSITORY: ${{ vars.DOCKERHUB_REPOSITORY }}
+              run: |
+                  set -eu
+                  for tag in "${GITHUB_REF_NAME}" slim; do
+                    docker buildx imagetools create \
+                      --tag "${DOCKERHUB_REPOSITORY}:${tag}" \
+                      "${GHCR_IMAGE}:${tag}"
+                  done

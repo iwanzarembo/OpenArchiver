@@ -36,6 +36,12 @@ export interface SearchFilters {
 	notTo?: string[];
 	/** Mailbox owner addresses (the account the email was archived from). */
 	mailboxes?: string[];
+	/**
+	 * Folder paths to include. Values are exact mailbox paths as the provider delivered them
+	 * (including its delimiter, e.g. `0 Haus.Rechnungen`). Values are OR-combined within the
+	 * field and AND-combined with every other filter.
+	 */
+	mailboxPaths?: string[];
 	/** Inclusive start date, yyyy-mm-dd (UTC). */
 	dateFrom?: string;
 	/** Inclusive end date, yyyy-mm-dd (UTC). */

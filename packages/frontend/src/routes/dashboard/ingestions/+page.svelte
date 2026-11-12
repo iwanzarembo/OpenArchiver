@@ -738,6 +738,21 @@
 											{$t('app.ingestions.merged_sources')})</span
 										>
 									{/if}
+									{#if source.folderFilters}
+										<Badge
+											variant="secondary"
+											class="ml-1 text-xs"
+											title={source.folderFilters.folders.join(', ')}
+										>
+											{source.folderFilters.mode === 'include'
+												? $t('app.ingestions.folders_included', {
+														count: source.folderFilters.folders.length,
+													} as any)
+												: $t('app.ingestions.folders_excluded', {
+														count: source.folderFilters.folders.length,
+													} as any)}
+										</Badge>
+									{/if}
 								</div>
 							</Table.Cell>
 							<Table.Cell class="capitalize"

@@ -109,5 +109,8 @@ export interface EmailDocument {
 	recipientLocalParts?: string[];
 	userEmailDomain?: string;
 	userEmailLocalPart?: string;
+	/** The IMAP folder the email was archived from, exactly as the provider named it.
+	 * Optional because documents indexed before this field existed lack it until reindexed. */
+	mailboxPath?: string;
 	// other metadata
 }

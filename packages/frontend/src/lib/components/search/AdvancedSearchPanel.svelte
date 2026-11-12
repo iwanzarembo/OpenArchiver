@@ -37,6 +37,8 @@
 		toAddresses = $bindable([]),
 		notToAddresses = $bindable([]),
 		mailboxes = $bindable([]),
+		mailboxPaths = $bindable([]),
+		availableFolders = [],
 		dateFrom = $bindable(''),
 		dateTo = $bindable(''),
 		searchIn = $bindable([]),
@@ -45,6 +47,8 @@
 	}: {
 		/** null = the user cannot list ingestion sources (no read:ingestion permission). */
 		availableSources?: { id: string; name: string }[] | null;
+		/** Folder paths that occur in the archive (index facet). */
+		availableFolders?: string[];
 		selectedSources?: string[];
 		excludedSources?: string[];
 		fromAddresses?: string[];
@@ -52,6 +56,7 @@
 		toAddresses?: string[];
 		notToAddresses?: string[];
 		mailboxes?: string[];
+		mailboxPaths?: string[];
 		dateFrom?: string;
 		dateTo?: string;
 		searchIn?: string[];
@@ -60,6 +65,19 @@
 	} = $props();
 
 	let open = $state(true);
+	let folderQuery = $state('');
+
+	const visibleFolders = $derived(
+		availableFolders.filter((folder) =>
+			folder.toLowerCase().includes(folderQuery.trim().toLowerCase())
+		)
+	);
+
+	const toggleFolder = (folder: string, checked: boolean) => {
+		mailboxPaths = checked
+			? [...mailboxPaths, folder]
+			: mailboxPaths.filter((entry) => entry !== folder);
+	};
 
 	const scopes = [
 		'subject',
@@ -79,6 +97,7 @@
 			toAddresses.length > 0,
 			notToAddresses.length > 0,
 			mailboxes.length > 0,
+			mailboxPaths.length > 0,
 			!!dateFrom || !!dateTo,
 			searchIn.length > 0,
 			hasAttachments !== 'any',
@@ -120,6 +139,7 @@
 		toAddresses = [];
 		notToAddresses = [];
 		mailboxes = [];
+		mailboxPaths = [];
 		dateFrom = '';
 		dateTo = '';
 		searchIn = [];
@@ -295,6 +315,53 @@
 				/>
 			</div>
 			<p class="text-muted-foreground text-xs">{$t('app.search.wildcard_hint')}</p>
+
+			<div class="space-y-1.5">
+				<Label>{$t('app.search.folders')}</Label>
+				{#if availableFolders.length === 0}
+					<p class="text-muted-foreground text-xs">
+						{$t('app.search.no_folder_values')}
+					</p>
+				{:else}
+					<Input
+						placeholder={$t('app.search.filter_folders_placeholder')}
+						bind:value={folderQuery}
+					/>
+					<div class="max-h-48 space-y-1 overflow-auto rounded-md border p-2">
+						<label class="flex cursor-pointer items-center gap-2 text-sm">
+							<Checkbox
+								checked={mailboxPaths.length === 0}
+								onCheckedChange={(checked) => {
+									if (checked === true) mailboxPaths = [];
+								}}
+							/>
+							<span class="font-medium">{$t('app.search.all_folders')}</span>
+						</label>
+						{#each visibleFolders as folder (folder)}
+							<label class="flex cursor-pointer items-center gap-2 text-sm">
+								<Checkbox
+									checked={mailboxPaths.includes(folder)}
+									onCheckedChange={(checked) =>
+										toggleFolder(folder, checked === true)}
+								/>
+								<span class="break-all">{folder}</span>
+							</label>
+						{/each}
+						{#if visibleFolders.length === 0}
+							<p class="text-muted-foreground text-xs">
+								{$t('app.search.no_folder_values')}
+							</p>
+						{/if}
+					</div>
+					{#if mailboxPaths.length > 0}
+						<p class="text-muted-foreground text-xs">
+							{$t('app.search.folders_selected', {
+								count: mailboxPaths.length,
+							} as any)}
+						</p>
+					{/if}
+				{/if}
+			</div>
 
 			<div class="space-y-1.5">
 				<Label>{$t('app.search.search_in')}</Label>

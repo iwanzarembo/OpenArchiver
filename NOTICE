@@ -1,0 +1,22 @@
+OpenArchiver Slim — unofficial fork
+===================================
+
+Upstream project: LogicLabs-OU/OpenArchiver
+Upstream URL:     https://github.com/LogicLabs-OU/OpenArchiver
+Upstream version: v0.6.2
+License:          AGPL-3.0 (see LICENSE)
+
+This repository contains modifications by the OpenArchiver Slim fork. The
+modifications are licensed under the same AGPL-3.0 terms. They are summarised
+in FORK.md and include:
+
+- per-source folder filters and a folder list endpoint,
+- a folder picker in the ingestion source form,
+- mailbox folder metadata in the search index and a search-page folder filter,
+- server-side bulk deletion by folder,
+- HTML sanitization and remote-content blocking in the email viewer,
+- a GitHub Actions CI and image-publishing workflow.
+
+The upstream copyright notices and the LICENSE file are retained. The source
+of every published image is this repository; keep it available when passing the
+image or the service on.

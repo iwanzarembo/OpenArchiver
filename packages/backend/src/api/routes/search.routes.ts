@@ -76,6 +76,13 @@ export const createSearchRouter = (
 	 *         description: Comma-separated mailbox owner addresses (the account an email was archived from). Accepts `*@domain` and `name@*` patterns.
 	 *         schema:
 	 *           type: string
+	 *       - name: mailboxPaths
+	 *         in: query
+	 *         required: false
+	 *         description: Comma-separated folder paths to include. Values are exact paths as the provider delivered them, including its delimiter (e.g. `0 Haus.Rechnungen`).
+	 *         schema:
+	 *           type: string
+	 *           example: "INBOX,Templates"
 	 *       - name: dateFrom
 	 *         in: query
 	 *         required: false
@@ -176,7 +183,7 @@ export const createSearchRouter = (
 	 *         description: The facet field to suggest values for.
 	 *         schema:
 	 *           type: string
-	 *           enum: [mailboxes, from]
+	 *           enum: [mailboxes, from, mailboxPaths]
 	 *       - name: query
 	 *         in: query
 	 *         required: false
@@ -184,6 +191,14 @@ export const createSearchRouter = (
 	 *         schema:
 	 *           type: string
 	 *           example: "ali"
+	 *       - name: limit
+	 *         in: query
+	 *         required: false
+	 *         description: Maximum number of values to return (1–200). Folder paths need a higher limit than the default.
+	 *         schema:
+	 *           type: integer
+	 *           default: 10
+	 *           example: 200
 	 *     responses:
 	 *       '200':
 	 *         description: Matching facet values.

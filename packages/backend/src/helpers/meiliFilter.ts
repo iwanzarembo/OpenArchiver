@@ -157,6 +157,9 @@ export function buildEmailSearchFilter(filters: SearchFilters): string | undefin
 	if (filters.mailboxes?.length) {
 		clauses.push(addressClauses(filters.mailboxes, MAILBOX_FIELDS, false));
 	}
+	if (filters.mailboxPaths?.length) {
+		clauses.push(inClause('mailboxPath', filters.mailboxPaths));
+	}
 	if (filters.dateFrom) {
 		clauses.push(`timestamp >= ${utcDayRange(filters.dateFrom).start}`);
 	}

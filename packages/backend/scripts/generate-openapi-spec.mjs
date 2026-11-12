@@ -518,6 +518,36 @@ const options = {
 					},
 					required: ['items', 'total', 'page', 'limit'],
 				},
+				BulkDeleteJob: {
+					type: 'object',
+					properties: {
+						id: { type: 'string', format: 'uuid' },
+						userId: { type: 'string', format: 'uuid' },
+						total: { type: 'integer', example: 4822 },
+						done: { type: 'integer', example: 120 },
+						deleted: { type: 'integer', example: 118 },
+						blocked: {
+							type: 'integer',
+							description: 'Blocked by legal hold or retention policy.',
+							example: 0,
+						},
+						failed: { type: 'integer', example: 2 },
+						errors: {
+							type: 'array',
+							items: {
+								type: 'object',
+								properties: {
+									id: { type: 'string', format: 'uuid' },
+									message: { type: 'string' },
+								},
+							},
+						},
+						status: { type: 'string', enum: ['running', 'completed'] },
+						createdAt: { type: 'string', format: 'date-time' },
+						finishedAt: { type: 'string', format: 'date-time' },
+					},
+					required: ['id', 'total', 'done', 'deleted', 'blocked', 'failed', 'status'],
+				},
 				// --- Search ---
 				SearchResults: {
 					type: 'object',

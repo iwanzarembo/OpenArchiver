@@ -69,6 +69,97 @@ export const createArchivedEmailRouter = (
 
 	/**
 	 * @openapi
+	 * /v1/archived-emails/bulk-delete:
+	 *   post:
+	 *     summary: Delete every archived email in folder paths
+	 *     description: >
+	 *       Starts a background job that deletes every archived email whose folder path is in
+	 *       `mailboxPaths`. The jobs runs sequentially through the normal deletion path (storage,
+	 *       Meilisearch, audit log, legal holds) and is scoped to the rows the caller may delete.
+	 *       Poll `/v1/archived-emails/bulk-delete/{jobId}` for progress. Requires `delete:archive`.
+	 *     operationId: bulkDeleteArchivedEmails
+	 *     tags:
+	 *       - Archived Emails
+	 *     security:
+	 *       - bearerAuth: []
+	 *       - apiKeyAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             required: [mailboxPaths]
+	 *             properties:
+	 *               mailboxPaths:
+	 *                 type: array
+	 *                 minItems: 1
+	 *                 maxItems: 500
+	 *                 items:
+	 *                   type: string
+	 *                 example: ["INBOX"]
+	 *     responses:
+	 *       '202':
+	 *         description: Job accepted. The body is the initial job state.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/BulkDeleteJob'
+	 *       '400':
+	 *         description: Deletion is disabled, or mailboxPaths is missing or invalid.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorMessage'
+	 *       '401':
+	 *         $ref: '#/components/responses/Unauthorized'
+	 *       '403':
+	 *         $ref: '#/components/responses/Forbidden'
+	 *       '500':
+	 *         $ref: '#/components/responses/InternalServerError'
+	 * /v1/archived-emails/bulk-delete/{jobId}:
+	 *   get:
+	 *     summary: Get bulk delete progress
+	 *     description: Returns the job state for the calling user. Requires `delete:archive`.
+	 *     operationId: getBulkDeleteStatus
+	 *     tags:
+	 *       - Archived Emails
+	 *     security:
+	 *       - bearerAuth: []
+	 *       - apiKeyAuth: []
+	 *     parameters:
+	 *       - name: jobId
+	 *         in: path
+	 *         required: true
+	 *         schema:
+	 *           type: string
+	 *           format: uuid
+	 *     responses:
+	 *       '200':
+	 *         description: Current job state.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/BulkDeleteJob'
+	 *       '401':
+	 *         $ref: '#/components/responses/Unauthorized'
+	 *       '404':
+	 *         $ref: '#/components/responses/NotFound'
+	 */
+	router.post(
+		'/bulk-delete',
+		requirePermission('delete', 'archive'),
+		archivedEmailController.bulkDeleteByFolders
+	);
+
+	router.get(
+		'/bulk-delete/:jobId',
+		requirePermission('delete', 'archive'),
+		archivedEmailController.bulkDeleteStatus
+	);
+
+	/**
+	 * @openapi
 	 * /v1/archived-emails/{id}:
 	 *   get:
 	 *     summary: Get a single archived email

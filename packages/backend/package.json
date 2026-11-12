@@ -12,7 +12,8 @@
 	"scripts": {
 		"build": "tsc && pnpm copy-assets",
 		"dev": "tsc --watch",
-		"copy-assets": "cp -r src/locales dist/locales",
+		"copy-assets": "rm -rf dist/locales && cp -r src/locales dist/locales",
+		"test:unit": "node --test test/folderFilter.test.mts test/meiliFilter.test.mts",
 		"test:integration:tika": "node --test test/textExtractor.tika.test.mts",
 		"start:ingestion-worker": "node dist/workers/ingestion.worker.js",
 		"start:indexing-worker": "node dist/workers/indexing.worker.js",

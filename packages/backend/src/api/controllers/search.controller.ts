@@ -13,7 +13,7 @@ const SEARCH_SCOPES: SearchScope[] = [
 	'from',
 	'to',
 ];
-const FACET_FIELDS = ['mailboxes', 'from'];
+const FACET_FIELDS = ['mailboxes', 'from', 'mailboxPaths'];
 const SORT_OPTIONS: SearchSortOption[] = ['relevance', 'date_desc', 'date_asc'];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,6 +88,11 @@ export class SearchController {
 			if (to) filters.to = to;
 			if (notTo) filters.notTo = notTo;
 			if (mailboxes) filters.mailboxes = mailboxes;
+
+			// Folder paths are exact values, including the provider's delimiter; no
+			// normalization is possible or wanted.
+			const mailboxPaths = csv(req.query.mailboxPaths);
+			if (mailboxPaths) filters.mailboxPaths = mailboxPaths;
 
 			const dateFrom =
 				typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined;
@@ -173,8 +178,12 @@ export class SearchController {
 				return;
 			}
 			const query = typeof req.query.query === 'string' ? req.query.query : '';
+			const limit = Math.max(
+				1,
+				Math.min(200, Number.parseInt(String(req.query.limit ?? '10'), 10) || 10)
+			);
 
-			const values = await this.searchService.searchFacetValues(field, query, userId);
+			const values = await this.searchService.searchFacetValues(field, query, userId, limit);
 			res.status(200).json({ values });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : req.t('errors.unknown');
