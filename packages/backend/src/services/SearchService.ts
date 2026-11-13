@@ -464,7 +464,11 @@ export class SearchService {
 	private static readonly FACET_FIELDS: Record<string, string> = {
 		mailboxes: 'userEmail',
 		from: 'from',
+		mailboxPaths: 'mailboxPath',
 	};
+
+	/** Facet fields that are also in `searchableAttributes`, so the query can be pushed down. */
+	private static readonly SEARCHABLE_FACET_FIELDS = new Set(['userEmail', 'from']);
 
 	/**
 	 * Typo-tolerant suggestions for a facet field, used for typeahead inputs (e.g. the
@@ -475,12 +479,15 @@ export class SearchService {
 	 * Uses a normal search restricted to the field (not `searchForFacetValues`, which only
 	 * prefix-matches the whole value) so that any token matches — e.g. typing "gmail"
 	 * matches "abc@gmail.com" because Meilisearch tokenizes the address on `@`/`.`. The
-	 * facet distribution over the matching documents yields the distinct values.
+	 * facet distribution over the matching documents yields the distinct values. Fields that
+	 * are not in `searchableAttributes` (folder paths) are distributed over the whole scope
+	 * and narrowed locally instead, so they never become keyword matches.
 	 */
 	public async searchFacetValues(
 		field: string,
 		query: string,
-		userId: string
+		userId: string,
+		limit = 10
 	): Promise<string[]> {
 		const facetName = SearchService.FACET_FIELDS[field];
 		if (!facetName) {
@@ -491,16 +498,22 @@ export class SearchService {
 		const { searchFilter } = await FilterBuilder.create(userId, 'archive', ['read', 'search']);
 		// undefined = full access; '' = a permission query that compiled to nothing → deny.
 		const accessFilter = searchFilter === '' ? 'ingestionSourceId = "-1"' : searchFilter;
-		const result = await index.search(query || '', {
-			attributesToSearchOn: [facetName],
+		const searchable = SearchService.SEARCHABLE_FACET_FIELDS.has(facetName);
+		const result = await index.search(searchable ? query || '' : '', {
+			...(searchable ? { attributesToSearchOn: [facetName] } : {}),
 			facets: [facetName],
 			limit: 0,
 			...(accessFilter ? { filter: accessFilter } : {}),
 		});
 		const distribution = result.facetDistribution?.[facetName] ?? {};
-		return Object.entries(distribution)
+		// A facet that is not searchable (folder paths) is listed over the whole scope
+		// and narrowed here; making it searchable would also let keywords hit folder names.
+		const values = Object.entries(distribution).filter(([value]) =>
+			searchable || !query ? true : value.toLowerCase().includes(query.toLowerCase())
+		);
+		return values
 			.sort(([, a], [, b]) => (b as number) - (a as number))
-			.slice(0, 10)
+			.slice(0, Math.max(1, Math.min(200, limit)))
 			.map(([value]) => value);
 	}
 
@@ -558,6 +571,7 @@ export class SearchService {
 				'recipientLocalParts',
 				'userEmailDomain',
 				'userEmailLocalPart',
+				'mailboxPath',
 			],
 			sortableAttributes: ['timestamp'],
 		});

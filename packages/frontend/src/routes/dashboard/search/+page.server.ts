@@ -13,6 +13,7 @@ const FILTER_PARAMS = [
 	'to',
 	'notTo',
 	'mailboxes',
+	'mailboxPaths',
 	'dateFrom',
 	'dateTo',
 	'searchIn',
@@ -67,14 +68,38 @@ async function performSearch(
 /** Loads the ingestion sources for the filter dropdown; null when the user may not list them. */
 async function loadIngestionSources(
 	event: RequestEvent
-): Promise<{ id: string; name: string }[] | null> {
+): Promise<
+	{ id: string; name: string; folderFilters: SafeIngestionSource['folderFilters'] }[] | null
+> {
 	try {
 		const response = await api('/ingestion-sources', event, { method: 'GET' });
 		if (!response.ok) return null;
 		const sources = (await response.json()) as SafeIngestionSource[];
-		return sources.map((s) => ({ id: s.id, name: s.name }));
+		return sources.map((s) => ({
+			id: s.id,
+			name: s.name,
+			folderFilters: s.folderFilters ?? null,
+		}));
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * The folders that actually occur in the archive, taken from the index facet so the filter
+ * only offers values that can produce results. 200 is above the folder counts this archive
+ * has; the endpoint clamps it.
+ */
+async function loadFolderFacets(event: RequestEvent): Promise<string[]> {
+	try {
+		const response = await api('/search/facets?field=mailboxPaths&query=&limit=200', event, {
+			method: 'GET',
+		});
+		if (!response.ok) return [];
+		const data = (await response.json()) as { values?: string[] };
+		return Array.isArray(data.values) ? data.values : [];
+	} catch {
+		return [];
 	}
 }
 
@@ -90,10 +115,11 @@ export const load: PageServerLoad = async (event) => {
 		if (value) filterParams[param] = value;
 	}
 
-	const [result, ingestionSources] = await Promise.all([
+	const [result, ingestionSources, availableFolders] = await Promise.all([
 		performSearch(keywords, page, matchingStrategy, filterParams, event),
 		loadIngestionSources(event),
+		loadFolderFacets(event),
 	]);
 
-	return { ...result, ingestionSources };
+	return { ...result, ingestionSources, availableFolders };
 };

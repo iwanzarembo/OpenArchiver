@@ -32,7 +32,9 @@
 	// Index coverage percentage, clamped to 100 (Meilisearch count can momentarily
 	// exceed the DB count).
 	let coverage = $derived(
-		stats.totalEmails > 0 ? Math.min(100, Math.round((stats.indexedCount / stats.totalEmails) * 100)) : 0
+		stats.totalEmails > 0
+			? Math.min(100, Math.round((stats.indexedCount / stats.totalEmails) * 100))
+			: 0
 	);
 
 	let activityData = $derived(
@@ -77,45 +79,63 @@
 		<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.total_emails')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.total_emails')}</Card.Title
+					>
 					<Mail class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{stats.totalEmails.toLocaleString()}</div>
+					<div class="text-primary text-2xl font-bold">
+						{stats.totalEmails.toLocaleString()}
+					</div>
 				</Card.Content>
 			</Card.Root>
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.mailboxes')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.mailboxes')}</Card.Title
+					>
 					<Users class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{stats.mailboxCount.toLocaleString()}</div>
+					<div class="text-primary text-2xl font-bold">
+						{stats.mailboxCount.toLocaleString()}
+					</div>
 				</Card.Content>
 			</Card.Root>
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.storage_used')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.storage_used')}</Card.Title
+					>
 					<HardDrive class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{formatBytes(stats.totalBytes)}</div>
+					<div class="text-primary text-2xl font-bold">
+						{formatBytes(stats.totalBytes)}
+					</div>
 					<p class="text-muted-foreground mt-1 text-xs">
 						{$t('app.ingestions.email_storage')}: {formatBytes(stats.emailBytes)} ·
-						{$t('app.ingestions.attachment_storage')}: {formatBytes(stats.attachmentBytes)}
+						{$t('app.ingestions.attachment_storage')}: {formatBytes(
+							stats.attachmentBytes
+						)}
 					</p>
 				</Card.Content>
 			</Card.Root>
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.attachments')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.attachments')}</Card.Title
+					>
 					<Paperclip class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{stats.attachmentCount.toLocaleString()}</div>
+					<div class="text-primary text-2xl font-bold">
+						{stats.attachmentCount.toLocaleString()}
+					</div>
 					<p class="text-muted-foreground mt-1 text-xs">
 						{stats.emailsWithAttachments.toLocaleString()}
 						{$t('app.ingestions.emails_with_attachments')}
@@ -125,17 +145,23 @@
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.threads')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.threads')}</Card.Title
+					>
 					<MessagesSquare class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{stats.threadCount.toLocaleString()}</div>
+					<div class="text-primary text-2xl font-bold">
+						{stats.threadCount.toLocaleString()}
+					</div>
 				</Card.Content>
 			</Card.Root>
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.date_range')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.date_range')}</Card.Title
+					>
 					<Calendar class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
@@ -147,11 +173,15 @@
 
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<Card.Title class="text-sm font-medium">{$t('app.ingestions.journaled')}</Card.Title>
+					<Card.Title class="text-sm font-medium"
+						>{$t('app.ingestions.journaled')}</Card.Title
+					>
 					<Archive class="text-muted-foreground h-4 w-4" />
 				</Card.Header>
 				<Card.Content>
-					<div class="text-primary text-2xl font-bold">{stats.journaledCount.toLocaleString()}</div>
+					<div class="text-primary text-2xl font-bold">
+						{stats.journaledCount.toLocaleString()}
+					</div>
 				</Card.Content>
 			</Card.Root>
 
@@ -159,7 +189,9 @@
 			{#if data.enterpriseMode}
 				<Card.Root>
 					<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-						<Card.Title class="text-sm font-medium">{$t('app.ingestions.legal_hold')}</Card.Title>
+						<Card.Title class="text-sm font-medium"
+							>{$t('app.ingestions.legal_hold')}</Card.Title
+						>
 						<Lock class="text-muted-foreground h-4 w-4" />
 					</Card.Header>
 					<Card.Content>
@@ -174,7 +206,9 @@
 		<!-- Index coverage -->
 		<Card.Root>
 			<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<Card.Title class="text-sm font-medium">{$t('app.ingestions.indexed_coverage')}</Card.Title>
+				<Card.Title class="text-sm font-medium"
+					>{$t('app.ingestions.indexed_coverage')}</Card.Title
+				>
 				<Database class="text-muted-foreground h-4 w-4" />
 			</Card.Header>
 			<Card.Content class="space-y-2">
@@ -183,7 +217,7 @@
 					<span class="text-muted-foreground text-sm">
 						{$t('app.ingestions.index_health_summary', {
 							indexed: stats.indexedCount,
-							total: stats.totalEmails
+							total: stats.totalEmails,
 						} as any)}
 					</span>
 				</div>
@@ -218,16 +252,26 @@
 							<Table.Header>
 								<Table.Row>
 									<Table.Head>{$t('app.ingestions.mailbox')}</Table.Head>
-									<Table.Head class="text-right">{$t('app.ingestions.total_emails')}</Table.Head>
-									<Table.Head class="text-right">{$t('app.ingestions.storage_used')}</Table.Head>
+									<Table.Head class="text-right"
+										>{$t('app.ingestions.total_emails')}</Table.Head
+									>
+									<Table.Head class="text-right"
+										>{$t('app.ingestions.storage_used')}</Table.Head
+									>
 								</Table.Row>
 							</Table.Header>
 							<Table.Body>
 								{#each stats.mailboxes as mailbox (mailbox.userEmail)}
 									<Table.Row>
-										<Table.Cell class="font-mono text-sm">{mailbox.userEmail}</Table.Cell>
-										<Table.Cell class="text-right">{mailbox.emailCount.toLocaleString()}</Table.Cell>
-										<Table.Cell class="text-right">{formatBytes(mailbox.bytes)}</Table.Cell>
+										<Table.Cell class="font-mono text-sm"
+											>{mailbox.userEmail}</Table.Cell
+										>
+										<Table.Cell class="text-right"
+											>{mailbox.emailCount.toLocaleString()}</Table.Cell
+										>
+										<Table.Cell class="text-right"
+											>{formatBytes(mailbox.bytes)}</Table.Cell
+										>
 									</Table.Row>
 								{/each}
 							</Table.Body>
@@ -251,7 +295,9 @@
 						>
 							<span class="font-medium">{child.name}</span>
 							<span class="text-muted-foreground text-sm capitalize"
-								>{child.provider.split('_').join(' ')} · {child.status.split('_').join(' ')}</span
+								>{child.provider.split('_').join(' ')} · {child.status
+									.split('_')
+									.join(' ')}</span
 							>
 						</a>
 					{/each}

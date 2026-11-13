@@ -226,6 +226,26 @@ export type IngestionCredentials =
 	| OAuthMailboxCredentials
 	| JmapCredentials;
 
+/**
+ * Per-source folder selection for mailbox ingestion.
+ *
+ * Paths are exactly what the provider reports (imapflow's `mailbox.path`), so the
+ * server's own hierarchy delimiter is part of the value (`0 Haus.Rechnungen` on a
+ * server that uses `.`). Glob patterns `*` (any run of characters, including the
+ * delimiter) and `?` (one character) are supported; everything else is literal.
+ *
+ * `include` is fail-closed: a folder that matches no entry is not archived, and a
+ * missing or empty list archives nothing. `exclude` keeps the historic behaviour
+ * and removes the matched folders from it.
+ */
+export interface FolderFilter {
+	mode: 'include' | 'exclude';
+	/** Folder paths or glob patterns, using the provider's delimiter. */
+	folders: string[];
+	/** Match paths case-sensitively. Defaults to false. */
+	caseSensitive?: boolean;
+}
+
 export interface IngestionSource {
 	id: string;
 	name: string;
@@ -241,6 +261,9 @@ export interface IngestionSource {
 	/** When true, the raw EML file is stored without any modification (no attachment
 	 * stripping). Required for GoBD / SEC 17a-4 compliance. Defaults to false. */
 	preserveOriginalFile: boolean;
+	/** Which folders to archive. Null or undefined keeps the historic behaviour
+	 *  (all folders except Drafts, Junk and Trash unless configured otherwise). */
+	folderFilters?: FolderFilter | null;
 	/** The ID of the root ingestion source this child is merged into.
 	 *  Null or undefined when this source is a standalone root. */
 	mergedIntoId?: string | null;
@@ -259,6 +282,8 @@ export interface CreateIngestionSourceDto {
 	providerConfig: Record<string, any>;
 	/** Store the unmodified raw EML for GoBD compliance. Defaults to false. */
 	preserveOriginalFile?: boolean;
+	/** Folder selection for this source. Omit for the historic behaviour. */
+	folderFilters?: FolderFilter | null;
 	/** Merge this new source into an existing root source's group. */
 	mergedIntoId?: string;
 }
@@ -272,6 +297,8 @@ export interface UpdateIngestionSourceDto {
 	lastSyncFinishedAt?: Date;
 	lastSyncStatusMessage?: string;
 	syncState?: SyncState;
+	/** Set to null to remove the filter and return to the historic behaviour. */
+	folderFilters?: FolderFilter | null;
 	/** Set or clear the merge parent. Use null to unmerge. */
 	mergedIntoId?: string | null;
 }

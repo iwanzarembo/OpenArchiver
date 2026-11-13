@@ -32,6 +32,11 @@ COPY . .
 # Build the OSS packages.
 RUN pnpm build:oss
 
+# CI target: the build stage already installed every dependency and compiled all
+# packages. The workflow only mounts its command into this image, so the checks
+# run against exactly the tree the production image is built from.
+FROM build AS ci
+
 # 2. Production dependencies. 
 FROM base AS prod-deps
 ENV PNPM_HOME="/pnpm"

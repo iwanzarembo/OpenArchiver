@@ -1,8 +1,14 @@
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import { IngestionController } from '../controllers/ingestion.controller';
 import { OAuthController } from '../controllers/oauth.controller';
 import { requireAuth } from '../middleware/requireAuth';
-import { requirePermission, ingestionResource } from '../middleware/requirePermission';
+import {
+	requirePermission,
+	ingestionResource,
+	type ResourceLoader,
+} from '../middleware/requirePermission';
+import { IngestionService } from '../../services/IngestionService';
 import { AuthService } from '../../services/AuthService';
 
 export const createIngestionRouter = (
@@ -14,6 +20,27 @@ export const createIngestionRouter = (
 
 	// Secure all routes in this module
 	router.use(requireAuth(authService));
+
+	/**
+	 * The folder picker has two modes: an unsaved form (create) and an existing source (read).
+	 * The permission therefore depends on the body, not on the route path. `loadResource` keeps
+	 * a role that is restricted to one source from reading another source's folder list.
+	 */
+	const folderListSourceResource: ResourceLoader = async (req) => {
+		if (typeof req.body?.sourceId !== 'string' || req.body.sourceId === '') {
+			return null;
+		}
+		return await IngestionService.findRowById(req.body.sourceId);
+	};
+
+	const requireFolderListPermission: RequestHandler = (req, res, next) => {
+		const hasSource = typeof req.body?.sourceId === 'string' && req.body.sourceId !== '';
+		return hasSource
+			? requirePermission('read', 'ingestion', {
+					loadResource: folderListSourceResource,
+				})(req, res, next)
+			: requirePermission('create', 'ingestion')(req, res, next);
+	};
 
 	/**
 	 * @openapi
@@ -74,6 +101,89 @@ export const createIngestionRouter = (
 	router.post('/', requirePermission('create', 'ingestion'), ingestionController.create);
 
 	router.get('/', requirePermission('read', 'ingestion'), ingestionController.findAll);
+
+	/**
+	 * @openapi
+	 * /v1/ingestion-sources/folders:
+	 *   post:
+	 *     summary: List the folders of a mailbox
+	 *     description: >
+	 *       Connects to the IMAP server and returns its folders for the folder picker.
+	 *       With `sourceId` the stored credentials are reused, so an edit dialog does not
+	 *       need the password again; a `providerConfig` is merged on top for connection
+	 *       fields that were changed but not saved. Without `sourceId`, the `providerConfig`
+	 *       from a create dialog is used. Only generic IMAP sources and OAuth mailboxes over
+	 *       IMAP are supported. Requires `read:ingestion` for an existing source and
+	 *       `create:ingestion` for an unsaved one. Credentials are never logged.
+	 *     operationId: listIngestionSourceFolders
+	 *     tags:
+	 *       - Ingestion
+	 *     security:
+	 *       - bearerAuth: []
+	 *       - apiKeyAuth: []
+	 *     requestBody:
+	 *       required: true
+	 *       content:
+	 *         application/json:
+	 *           schema:
+	 *             type: object
+	 *             properties:
+	 *               sourceId:
+	 *                 type: string
+	 *                 format: uuid
+	 *                 description: Existing source whose stored credentials should be used.
+	 *               providerConfig:
+	 *                 type: object
+	 *                 additionalProperties: true
+	 *                 description: Connection settings from the form (`type` identifies the provider).
+	 *     responses:
+	 *       '200':
+	 *         description: Folders of the mailbox, sorted by path.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               type: object
+	 *               properties:
+	 *                 folders:
+	 *                   type: array
+	 *                   items:
+	 *                     type: object
+	 *                     properties:
+	 *                       path:
+	 *                         type: string
+	 *                         example: 0 Haus.Rechnungen
+	 *                       delimiter:
+	 *                         type: string
+	 *                         example: .
+	 *                       specialUse:
+	 *                         type: string
+	 *                         nullable: true
+	 *                         example: \Drafts
+	 *                       flags:
+	 *                         type: array
+	 *                         items:
+	 *                           type: string
+	 *                       exists:
+	 *                         type: integer
+	 *                         description: Number of messages in the folder.
+	 *       '400':
+	 *         description: Missing configuration, unsupported provider or a connection that failed.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorMessage'
+	 *       '401':
+	 *         $ref: '#/components/responses/Unauthorized'
+	 *       '403':
+	 *         $ref: '#/components/responses/Forbidden'
+	 *       '404':
+	 *         description: The source does not exist.
+	 *         content:
+	 *           application/json:
+	 *             schema:
+	 *               $ref: '#/components/schemas/ErrorMessage'
+	 */
+	router.post('/folders', requireFolderListPermission, ingestionController.listFolders);
 
 	/**
 	 * @openapi

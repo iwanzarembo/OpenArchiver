@@ -1,5 +1,9 @@
 <script lang="ts">
-	import type { SafeIngestionSource, CreateIngestionSourceDto } from '@open-archiver/types';
+	import type {
+		SafeIngestionSource,
+		CreateIngestionSourceDto,
+		FolderFilter,
+	} from '@open-archiver/types';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -12,8 +16,9 @@
 	import { Progress } from '$lib/components/ui/progress';
 	import { setAlert } from '$lib/components/custom/alert/alert-state.svelte';
 	import { authStore } from '$lib/stores/auth.store';
+	import { api } from '$lib/api.client';
 	import { get } from 'svelte/store';
-	import { Info, ChevronDown, CircleCheck, CircleX, X } from 'lucide-svelte';
+	import { Info, ChevronDown, ChevronRight, CircleCheck, CircleX, X } from 'lucide-svelte';
 	import tippy from 'tippy.js';
 	import 'tippy.js/dist/tippy.css';
 	import { t } from '$lib/translations';
@@ -95,6 +100,7 @@
 			allowInsecureCert: false,
 		},
 		preserveOriginalFile: source?.preserveOriginalFile ?? false,
+		folderFilters: source?.folderFilters ?? null,
 	});
 
 	$effect(() => {
@@ -232,6 +238,232 @@
 	let showAdvanced = $state(false);
 	let mergeEnabled = $state(false);
 
+	// ---------------------------------------------------------------------------
+	// Folder selection
+	//
+	// `selectedFolders` carries the filter's own list: the excluded paths in
+	// "all except" mode and the included paths in "only" mode. The checkboxes show
+	// the resulting decision (archived or not), which is what the admin thinks in.
+	// ---------------------------------------------------------------------------
+	type ListedFolder = {
+		path: string;
+		delimiter: string;
+		specialUse: string | null;
+		flags: string[];
+		exists: number;
+	};
+	type FolderNode = {
+		name: string;
+		path: string;
+		depth: number;
+		folder: ListedFolder | null;
+		children: FolderNode[];
+	};
+
+	let folderMode = $state<'exclude' | 'include'>(source?.folderFilters?.mode ?? 'exclude');
+	let selectedFolders = $state<string[]>([...(source?.folderFilters?.folders ?? [])]);
+	let folderEntries = $state<ListedFolder[]>([]);
+	let foldersLoaded = $state(false);
+	let foldersLoading = $state(false);
+	let folderLoadError = $state('');
+	let folderFilterText = $state('');
+	let collapsedFolderPaths = $state<string[]>([]);
+	let folderValidationError = $state('');
+
+	/** Folder filters need an IMAP folder list; Graph mailboxes have a different id space. */
+	const folderSectionVisible = $derived(
+		formData.provider === 'generic_imap' ||
+			(formData.provider === 'oauth_mailbox' &&
+				!(!source && formData.providerConfig.transport === 'graph'))
+	);
+
+	/** A fresh OAuth form has no token yet, so there is nothing to connect with. */
+	const canLoadFolders = $derived(formData.provider === 'generic_imap' || !!source);
+
+	const isSelectableFolder = (folder: ListedFolder): boolean =>
+		!folder.flags.some((flag) => flag.toLowerCase() === '\\noselect');
+
+	const isFolderArchived = (path: string): boolean =>
+		folderMode === 'include' ? selectedFolders.includes(path) : !selectedFolders.includes(path);
+
+	/** Builds the nested tree the picker renders; intermediate segments are groups. */
+	const buildFolderTree = (entries: ListedFolder[]): FolderNode[] => {
+		const roots: FolderNode[] = [];
+		const byPath = new Map<string, FolderNode>();
+
+		for (const entry of entries) {
+			const delimiter = entry.delimiter || '/';
+			const parts = entry.path.split(delimiter);
+			let children = roots;
+			let prefix = '';
+
+			parts.forEach((part, depth) => {
+				prefix = depth === 0 ? part : `${prefix}${delimiter}${part}`;
+				let node = byPath.get(prefix);
+				if (!node) {
+					node = { name: part, path: prefix, depth, folder: null, children: [] };
+					byPath.set(prefix, node);
+					children.push(node);
+				}
+				if (depth === parts.length - 1) {
+					node.folder = entry;
+				}
+				children = node.children;
+			});
+		}
+
+		const sortNodes = (nodes: FolderNode[]) => {
+			nodes.sort((a, b) => a.name.localeCompare(b.name));
+			nodes.forEach((node) => sortNodes(node.children));
+		};
+		sortNodes(roots);
+		return roots;
+	};
+
+	const folderTree = $derived(buildFolderTree(folderEntries));
+
+	const subtreeMatches = (node: FolderNode, needle: string): boolean =>
+		!needle ||
+		node.path.toLowerCase().includes(needle) ||
+		node.children.some((child) => subtreeMatches(child, needle));
+
+	/** Flattens the tree to visible rows; a filter forces the matching branches open. */
+	const flattenVisibleFolders = (
+		nodes: FolderNode[],
+		filterText: string,
+		collapsed: string[]
+	): FolderNode[] => {
+		const needle = filterText.trim().toLowerCase();
+		const rows: FolderNode[] = [];
+
+		const visit = (list: FolderNode[]) => {
+			for (const node of list) {
+				if (!subtreeMatches(node, needle)) continue;
+				rows.push(node);
+				if (needle !== '' || !collapsed.includes(node.path)) {
+					visit(node.children);
+				}
+			}
+		};
+		visit(nodes);
+		return rows;
+	};
+
+	const visibleFolderRows = $derived(
+		flattenVisibleFolders(folderTree, folderFilterText, collapsedFolderPaths)
+	);
+
+	const selectableFolders = $derived(folderEntries.filter(isSelectableFolder));
+	const archivedFolderCount = $derived(
+		selectableFolders.filter((folder) => isFolderArchived(folder.path)).length
+	);
+
+	const toggleFolder = (path: string, archived: boolean) => {
+		folderValidationError = '';
+		const included = folderMode === 'include';
+		const has = selectedFolders.includes(path);
+
+		if (included === archived) {
+			if (!has) selectedFolders = [...selectedFolders, path];
+		} else if (has) {
+			selectedFolders = selectedFolders.filter((entry) => entry !== path);
+		}
+	};
+
+	const archiveAllFolders = () => {
+		folderValidationError = '';
+		selectedFolders =
+			folderMode === 'include' ? selectableFolders.map((folder) => folder.path) : [];
+	};
+
+	const archiveNoFolders = () => {
+		folderValidationError = '';
+		selectedFolders =
+			folderMode === 'exclude' ? selectableFolders.map((folder) => folder.path) : [];
+	};
+
+	const toggleFolderCollapsed = (path: string) => {
+		collapsedFolderPaths = collapsedFolderPaths.includes(path)
+			? collapsedFolderPaths.filter((entry) => entry !== path)
+			: [...collapsedFolderPaths, path];
+	};
+
+	const handleFolderModeChange = (mode: string) => {
+		if (mode !== 'include' && mode !== 'exclude') return;
+		// The two lists mean opposite things, so carrying the old entries over would
+		// silently invert the selection. Start clean and let the admin pick again.
+		folderMode = mode;
+		selectedFolders = [];
+		folderValidationError = '';
+	};
+
+	const loadFolders = async () => {
+		foldersLoading = true;
+		folderLoadError = '';
+		try {
+			const body: Record<string, unknown> = {};
+			if (source) {
+				body.sourceId = source.id;
+				// Only send the blank form values when the admin actually opened the
+				// connection fields; otherwise the stored credentials are the truth.
+				if (showConnectionFields) {
+					body.providerConfig = { ...formData.providerConfig, type: formData.provider };
+				}
+			} else {
+				body.providerConfig = { ...formData.providerConfig, type: formData.provider };
+			}
+
+			const response = await api('/ingestion-sources/folders', {
+				method: 'POST',
+				body: JSON.stringify(body),
+			});
+			const data = await response.json().catch(() => ({}));
+			if (!response.ok) {
+				folderLoadError =
+					(data as { message?: string }).message ??
+					$t('app.components.ingestion_source_form.folders_load_failed');
+				return;
+			}
+
+			folderEntries = Array.isArray((data as { folders?: ListedFolder[] }).folders)
+				? (data as { folders: ListedFolder[] }).folders
+				: [];
+			foldersLoaded = true;
+			folderValidationError = '';
+		} catch {
+			folderLoadError = $t('app.components.ingestion_source_form.folders_load_failed');
+		} finally {
+			foldersLoading = false;
+		}
+	};
+
+	/**
+	 * The value the API receives. An empty "all except" list is the historic
+	 * behaviour and is sent as `null`; an empty "only" list must stay an empty
+	 * include list, because dropping it would archive everything instead.
+	 */
+	const buildFolderFilters = (): FolderFilter | null => {
+		if (!folderSectionVisible) {
+			return formData.folderFilters ?? null;
+		}
+		const caseSensitive = source?.folderFilters?.caseSensitive === true;
+		if (folderMode === 'include') {
+			return {
+				mode: 'include',
+				folders: [...selectedFolders],
+				...(caseSensitive ? { caseSensitive: true } : {}),
+			};
+		}
+		if (selectedFolders.length === 0) {
+			return null;
+		}
+		return {
+			mode: 'exclude',
+			folders: [...selectedFolders],
+			...(caseSensitive ? { caseSensitive: true } : {}),
+		};
+	};
+
 	// Upload state for the file-based providers (PST/EML/Mbox). Only one provider block
 	// is rendered at a time, so a single shared set of state is sufficient.
 	type UploadState = 'idle' | 'uploading' | 'success' | 'error';
@@ -296,17 +528,28 @@
 
 	const handleSubmit = async (event: Event) => {
 		event.preventDefault();
+
+		if (folderSectionVisible && folderMode === 'include' && selectedFolders.length === 0) {
+			// An empty include list is fail-closed in the backend, but an admin who
+			// just switched the mode almost certainly did not mean "archive nothing".
+			folderValidationError = $t(
+				'app.components.ingestion_source_form.folders_include_requires_selection'
+			);
+			return;
+		}
+
 		isSubmitting = true;
 		try {
+			const submission = { ...formData, folderFilters: buildFolderFilters() };
 			// An edit that leaves the connection alone must not send providerConfig at
 			// all — the form's copy is blank, and blanks are not an instruction to erase.
 			// The backend merge is the safety net; omitting the object entirely is the
 			// guarantee.
 			if (source && !showConnectionFields) {
-				const { providerConfig, ...withoutConfig } = formData;
+				const { providerConfig, ...withoutConfig } = submission;
 				await onSubmit(withoutConfig as CreateIngestionSourceDto);
 			} else {
-				await onSubmit(formData);
+				await onSubmit(submission);
 			}
 		} finally {
 			isSubmitting = false;
@@ -1019,6 +1262,202 @@
 			</div>
 		{/if}
 	{/if}
+
+	{#if folderSectionVisible}
+		<div class="space-y-3 border-t pt-4">
+			<div class="flex flex-wrap items-start justify-between gap-3">
+				<div>
+					<h3 class="text-sm font-medium">
+						{$t('app.components.ingestion_source_form.folders_title')}
+					</h3>
+					<p class="text-muted-foreground text-xs">
+						{$t('app.components.ingestion_source_form.folders_description')}
+					</p>
+				</div>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onclick={loadFolders}
+					disabled={foldersLoading || !canLoadFolders}
+				>
+					{foldersLoading
+						? $t('app.components.ingestion_source_form.folders_loading')
+						: foldersLoaded
+							? $t('app.components.ingestion_source_form.folders_reload')
+							: $t('app.components.ingestion_source_form.folders_load')}
+				</Button>
+			</div>
+
+			{#if !canLoadFolders}
+				<p class="text-muted-foreground text-xs">
+					{$t('app.components.ingestion_source_form.folders_oauth_needs_save')}
+				</p>
+			{/if}
+
+			<RadioGroup.Root
+				value={folderMode}
+				onValueChange={handleFolderModeChange}
+				class="space-y-2"
+			>
+				<div class="flex items-start gap-2">
+					<RadioGroup.Item value="exclude" id="folder-mode-exclude" class="mt-1" />
+					<div>
+						<Label for="folder-mode-exclude">
+							{$t('app.components.ingestion_source_form.folders_mode_exclude')}
+						</Label>
+						<p class="text-muted-foreground text-xs">
+							{$t('app.components.ingestion_source_form.folders_mode_exclude_hint')}
+						</p>
+					</div>
+				</div>
+				<div class="flex items-start gap-2">
+					<RadioGroup.Item value="include" id="folder-mode-include" class="mt-1" />
+					<div>
+						<Label for="folder-mode-include">
+							{$t('app.components.ingestion_source_form.folders_mode_include')}
+						</Label>
+						<p class="text-muted-foreground text-xs">
+							{$t('app.components.ingestion_source_form.folders_mode_include_hint')}
+						</p>
+					</div>
+				</div>
+			</RadioGroup.Root>
+
+			{#if folderMode === 'include'}
+				<Alert.Root>
+					<Alert.Description>
+						{$t('app.components.ingestion_source_form.folders_include_warning')}
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+
+			{#if source && !source.folderFilters && folderMode === 'exclude' && selectedFolders.length === 0}
+				<Alert.Root>
+					<Alert.Description>
+						{$t('app.components.ingestion_source_form.folders_no_filter_hint')}
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+
+			{#if folderLoadError}
+				<Alert.Root variant="destructive">
+					<CircleX class="size-4" />
+					<Alert.Description>{folderLoadError}</Alert.Description>
+				</Alert.Root>
+			{/if}
+
+			{#if foldersLoaded}
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<p class="text-sm">
+						{$t('app.components.ingestion_source_form.folders_summary', {
+							archived: archivedFolderCount,
+							total: selectableFolders.length,
+						} as any)}
+					</p>
+					<div class="flex gap-1">
+						<Button type="button" variant="ghost" size="sm" onclick={archiveAllFolders}>
+							{$t('app.components.ingestion_source_form.folders_select_all')}
+						</Button>
+						<Button type="button" variant="ghost" size="sm" onclick={archiveNoFolders}>
+							{$t('app.components.ingestion_source_form.folders_select_none')}
+						</Button>
+					</div>
+				</div>
+
+				<Input
+					placeholder={$t(
+						'app.components.ingestion_source_form.folders_filter_placeholder'
+					)}
+					bind:value={folderFilterText}
+					class="max-w-sm"
+				/>
+
+				<div class="max-h-72 overflow-auto rounded-md border p-2">
+					{#each visibleFolderRows as node (node.path)}
+						<div
+							class="flex items-center gap-2 py-0.5"
+							style="padding-left: {node.depth * 1.25}rem"
+						>
+							{#if node.children.length > 0}
+								<button
+									type="button"
+									class="text-muted-foreground hover:text-foreground flex size-5 items-center justify-center rounded"
+									onclick={() => toggleFolderCollapsed(node.path)}
+									aria-label={$t(
+										'app.components.ingestion_source_form.folders_toggle'
+									)}
+								>
+									{#if collapsedFolderPaths.includes(node.path)}
+										<ChevronRight class="size-4" />
+									{:else}
+										<ChevronDown class="size-4" />
+									{/if}
+								</button>
+							{:else}
+								<span class="size-5"></span>
+							{/if}
+
+							{#if node.folder}
+								{@const folder = node.folder}
+								{@const selectable = isSelectableFolder(folder)}
+								<Checkbox
+									checked={isFolderArchived(folder.path)}
+									disabled={!selectable}
+									aria-label={folder.path}
+									onCheckedChange={(checked) =>
+										selectable && toggleFolder(folder.path, checked === true)}
+								/>
+								<span
+									class={selectable
+										? 'text-sm'
+										: 'text-muted-foreground text-sm line-through'}
+									title={folder.path}
+								>
+									{node.name}
+								</span>
+								{#if !selectable}
+									<span class="text-muted-foreground text-xs italic">
+										{$t(
+											'app.components.ingestion_source_form.folders_noselect'
+										)}
+									</span>
+								{:else if folder.exists > 0}
+									<span class="text-muted-foreground text-xs">
+										{$t(
+											'app.components.ingestion_source_form.folders_messages',
+											{
+												count: folder.exists,
+											} as any
+										)}
+									</span>
+								{/if}
+							{:else}
+								<span class="text-muted-foreground text-sm font-medium">
+									{node.name}
+								</span>
+							{/if}
+						</div>
+					{/each}
+
+					{#if visibleFolderRows.length === 0}
+						<p class="text-muted-foreground p-2 text-sm">
+							{$t('app.components.ingestion_source_form.folders_empty')}
+						</p>
+					{/if}
+				</div>
+
+				{#if folderValidationError}
+					<p class="text-destructive text-sm">{folderValidationError}</p>
+				{/if}
+			{:else if source?.folderFilters}
+				<p class="text-muted-foreground text-xs">
+					{$t('app.components.ingestion_source_form.folders_summary_unknown')}
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	{#if formData.provider === 'google_workspace' || formData.provider === 'microsoft_365'}
 		<Alert.Root>
 			<Alert.Title>{$t('app.components.ingestion_source_form.heads_up')}</Alert.Title>

@@ -112,6 +112,29 @@ After deploying the application, you will need to configure one or more ingestio
 - [Connecting to Microsoft 365](https://docs.openarchiver.com/user-guides/email-providers/imap.html)
 - [Connecting to a Generic IMAP Server](https://docs.openarchiver.com/user-guides/email-providers/imap.html)
 
+## OpenArchiver Slim (unofficial fork)
+
+This repository is an unofficial fork of
+[LogicLabs-OU/OpenArchiver](https://github.com/LogicLabs-OU/OpenArchiver), based on upstream
+`v0.6.2`. It keeps the upstream behaviour by default and adds:
+
+- **Per-source folder filters**: `exclude` archives every folder except the selected ones,
+  `include` archives only the selected ones. Folder paths use the server's delimiter and support
+  the globs `*` and `?`; `\Noselect` folders can never be selected.
+- A folder picker in the ingestion source form that loads the real folders from the mailbox.
+- Folder metadata in the search index: filter and facet by folder, plus a mobile-friendly search
+  page with a filter sheet.
+- Bulk deletion, either of the selected search results or of every archived email in whole
+  folders (server-side job with progress and a report).
+- A hardened email viewer: sanitized HTML, external images blocked by default, tracking-pixel
+  warning.
+
+See [FORK.md](FORK.md) for the complete list, image tags, configuration and the upstream
+contribution plan. `LICENSE` is unchanged (AGPL-3.0). **The source of every published image is
+this repository**; anyone who passes the image on must keep that source available as well.
+
+Development setup: [docs/local-development.md](docs/local-development.md).
+
 ## Contributing
 
 We welcome contributions from the community!

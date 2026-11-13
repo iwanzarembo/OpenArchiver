@@ -60,10 +60,17 @@
 		"journalingSourceManagedByJournaling": "SMTP journaling sources are managed through the Journaling page and cannot be modified via the ingestion source API.",
 		"oauthNotOAuthSource": "This ingestion source does not use OAuth authorization.",
 		"oauthAuthorizeFailed": "Could not start the mailbox authorization.",
-		"oauthPollFailed": "Could not check the authorization status."
+		"oauthPollFailed": "Could not check the authorization status.",
+		"foldersMissingConfig": "Provide a sourceId or a providerConfig to list folders.",
+		"foldersNotSupported": "Folder selection is only available for IMAP mailboxes (generic IMAP or an OAuth mailbox over IMAP).",
+		"foldersNeedAuthorization": "Authorize this mailbox first. Listing folders needs an active token.",
+		"foldersAuthFailed": "Could not log in to the IMAP server. Check the username and password.",
+		"foldersTimeout": "The IMAP server did not respond in time.",
+		"foldersConnectionFailed": "Could not connect to the IMAP server."
 	},
 	"archivedEmail": {
-		"notFound": "Archived email not found"
+		"notFound": "Archived email not found",
+		"bulkDeletePathsRequired": "Provide at least one folder path (mailboxPaths) to delete."
 	},
 	"search": {
 		"keywordsRequired": "Keywords are required when no filter is provided",
