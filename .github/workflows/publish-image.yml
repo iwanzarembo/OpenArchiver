@@ -62,7 +62,9 @@ jobs:
                   context: .
                   file: apps/open-archiver/Dockerfile
                   target: production
-                  platforms: linux/amd64,linux/arm64
+                  # amd64 covers Unraid and the usual x86 servers. Add linux/arm64 here if
+                  # you really need it; the QEMU build takes much longer.
+                  platforms: linux/amd64
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
