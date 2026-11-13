@@ -19,10 +19,9 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            # Reads the pinned pnpm version from package.json's packageManager field.
             - name: Set up pnpm
               uses: pnpm/action-setup@v4
-              with:
-                  version: 10.34.7
 
             - name: Set up Node
               uses: actions/setup-node@v4
